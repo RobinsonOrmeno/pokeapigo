@@ -91,47 +91,24 @@ func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
 	response := ResponseAllPokemonsApi{}
 	var total int
 	wg := sync.WaitGroup{}
-	//list := make(chan []ResponseApi)
 	if pokemon.Results != nil {
 		for i := 0; i < len(pokemon.Results); i++ {
 			wg.Add(1)
-			respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL, &wg)
-			if err != nil {
-				log.Fatalf("Error al traer pokemon y habilidad : %v", err)
-			}
-			resApiList = append(resApiList, respAllPokemonsAndAbilities)
-			total = i
+			go func() {
+				respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL, &wg)
+				if err != nil {
+					log.Fatalf("Error al traer pokemon y habilidad : %v", err)
+				}
+				resApiList = append(resApiList, respAllPokemonsAndAbilities)
+			}()
 		}
 		wg.Wait()
-		//list <- resApiList
-
-		//<-list
-		/*for i := 0; i < len(pokemon.Results); i++ {
-			respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL)
-			if err != nil {
-				log.Fatalf("Error al traer pokemon y habilidad : %v", err)
-			}
-			resApiList = append(resApiList, respAllPokemonsAndAbilities)
-			total = i
-		}*/
+		total = len(pokemon.Results)
 		response.ResponseApi = &resApiList
-		response.Total += total + 1
+		response.Total = total
 	}
 	return &response, nil
 }
-
-//func worker(id int, jobs <-chan []Results, results chan<- []Results, wg *sync.WaitGroup) {
-//	defer wg.Done()
-//	for value := range jobs {
-//		fmt.Printf("Worker %d procesando %s\n", id, value)
-//		result, err := callAPI(value)
-//		if err != nil {
-//			results <- fmt.Sprintf("Error al procesar %s: %v", value, err)
-//		} else {
-//			results <- result
-//		}
-//	}
-//}
 
 func getPokemonsAndAbility(url string, wg *sync.WaitGroup) (ResponseApi, error) {
 	defer wg.Done()
