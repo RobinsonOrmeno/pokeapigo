@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -7,12 +6,15 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 func main() {
 
 	fmt.Println("Servidor escuchando en http://localhost:8080")
+	http.HandleFunc("/all/", handlerAllPokemon)
 	http.HandleFunc("/pokemon/", handlerPokemon)
+
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
@@ -38,6 +40,105 @@ func handlerPokemon(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func handlerAllPokemon(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	var id string
+
+	path := strings.TrimPrefix(r.URL.Path, "/all/")
+	id = path
+
+	response, err := getAllPokemons(id)
+	if err != nil {
+		log.Fatalf("Erroooor")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
+	const defaultLimit = "1100"
+
+	var limit string
+	if quantity != "" {
+		limit = quantity
+	} else {
+		limit = defaultLimit
+	}
+	//PRIMER LLAMADO
+	//************************************************************************************************************
+
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/?limit=%s&offset=0", limit)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Estado HTTP no esperado: %d", resp.StatusCode)
+	}
+
+	pokemon := &ResponseAllPokemons{}
+	err = json.NewDecoder(resp.Body).Decode(&pokemon)
+	if err != nil {
+		log.Fatalf("Error al decodificar JSON: %v", err)
+	}
+	//************************************************************************************************************
+	resApiList := make([]ResponseApi, 0)
+	response := ResponseAllPokemonsApi{}
+	var total int
+	wg := sync.WaitGroup{}
+	if pokemon.Results != nil {
+		for i := 0; i < len(pokemon.Results); i++ {
+			wg.Add(1)
+			go func() {
+				respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL, &wg)
+				if err != nil {
+					log.Fatalf("Error al traer pokemon y habilidad : %v", err)
+				}
+				resApiList = append(resApiList, respAllPokemonsAndAbilities)
+			}()
+		}
+		wg.Wait()
+		total = len(pokemon.Results)
+		response.ResponseApi = &resApiList
+		response.Total = total
+	}
+	return &response, nil
+}
+
+func getPokemonsAndAbility(url string, wg *sync.WaitGroup) (ResponseApi, error) {
+	defer wg.Done()
+	response := ResponseApi{}
+	resp, err := http.Get(url)
+	if err != nil {
+		return ResponseApi{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Estado HTTP no esperado: %d", resp.StatusCode)
+	}
+
+	pokemon := &ResponsePokeApi{}
+	var abilities []string
+	err = json.NewDecoder(resp.Body).Decode(&pokemon)
+	if err != nil {
+		log.Fatalf("Error al decodificar JSON: %v", err)
+	}
+	if pokemon.Abilities != nil {
+		for i := 0; i < len(pokemon.Abilities); i++ {
+			abilities = append(abilities, getAbility(pokemon.Abilities[i].Ability.URL))
+		}
+		response.Abilityes = abilities
+		response.Name = pokemon.Name
+		response.Weight = int64(pokemon.Weight)
+
+	}
+
+	return response, nil
 }
 
 func getPokemon(id string) (*ResponseApi, error) {
@@ -74,16 +175,16 @@ func getPokemonAndAbility(id string) (*ResponseApi, error) {
 	}
 
 	pokemon := &ResponsePokeApi{}
-	var abilieites []string
+	var abilities []string
 	err = json.NewDecoder(resp.Body).Decode(&pokemon)
 	if err != nil {
 		log.Fatalf("Error al decodificar JSON: %v", err)
 	}
 	if pokemon.Abilities != nil {
 		for i := 0; i < len(pokemon.Abilities); i++ {
-			abilieites = append(abilieites, getAbility(pokemon.Abilities[i].Ability.URL))
+			abilities = append(abilities, getAbility(pokemon.Abilities[i].Ability.URL))
 		}
-		response.Abilityes = abilieites
+		response.Abilityes = abilities
 		response.Name = pokemon.Name
 		response.Weight = int64(pokemon.Weight)
 
@@ -127,6 +228,21 @@ func validateResponseAbility(ability *AbilityResponse) string {
 	return description
 }
 
+type ResponseAllPokemons struct {
+	Count    int       `json:"count"`
+	Next     string    `json:"next"`
+	Previous any       `json:"previous"`
+	Results  []Results `json:"results"`
+}
+type Results struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type ResponseAllPokemonsApi struct {
+	Total       int `json:"total"`
+	ResponseApi *[]ResponseApi
+}
 type ResponseApi struct {
 	Name      string
 	Weight    int64
