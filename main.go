@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 func main() {
@@ -89,16 +90,30 @@ func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
 	resApiList := make([]ResponseApi, 0)
 	response := ResponseAllPokemonsApi{}
 	var total int
-
+	wg := sync.WaitGroup{}
+	//list := make(chan []ResponseApi)
 	if pokemon.Results != nil {
 		for i := 0; i < len(pokemon.Results); i++ {
-			respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL)
+			wg.Add(1)
+			respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL, &wg)
 			if err != nil {
 				log.Fatalf("Error al traer pokemon y habilidad : %v", err)
 			}
 			resApiList = append(resApiList, respAllPokemonsAndAbilities)
 			total = i
 		}
+		wg.Wait()
+		//list <- resApiList
+
+		//<-list
+		/*for i := 0; i < len(pokemon.Results); i++ {
+			respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL)
+			if err != nil {
+				log.Fatalf("Error al traer pokemon y habilidad : %v", err)
+			}
+			resApiList = append(resApiList, respAllPokemonsAndAbilities)
+			total = i
+		}*/
 		response.ResponseApi = &resApiList
 		response.Total += total + 1
 	}
@@ -118,7 +133,8 @@ func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
 //	}
 //}
 
-func getPokemonsAndAbility(url string) (ResponseApi, error) {
+func getPokemonsAndAbility(url string, wg *sync.WaitGroup) (ResponseApi, error) {
+	defer wg.Done()
 	response := ResponseApi{}
 	resp, err := http.Get(url)
 	if err != nil {
