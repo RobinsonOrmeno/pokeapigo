@@ -88,30 +88,51 @@ func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
 	}
 	//************************************************************************************************************
 	resApiList := make([]ResponseApi, 0)
-	response := ResponseAllPokemonsApi{}
-	var total int
 	wg := sync.WaitGroup{}
+	respApi := make(chan ResponseApi)
+	errorApi := make(chan error)
 	if pokemon.Results != nil {
 		for i := 0; i < len(pokemon.Results); i++ {
 			wg.Add(1)
-			go func() {
-				respAllPokemonsAndAbilities, err := getPokemonsAndAbility(pokemon.Results[i].URL, &wg)
+			go func(url string) {
+				defer wg.Done()
+				respAllPokemonsAndAbilities, err := getPokemonsAndAbility(url)
 				if err != nil {
+					errorApi <- err
 					log.Fatalf("Error al traer pokemon y habilidad : %v", err)
+					return
 				}
-				resApiList = append(resApiList, respAllPokemonsAndAbilities)
-			}()
+				respApi <- respAllPokemonsAndAbilities
+			}(pokemon.Results[i].URL)
 		}
+	}
+
+	go func() {
 		wg.Wait()
-		total = len(pokemon.Results)
-		response.ResponseApi = &resApiList
-		response.Total = total
+		close(respApi)
+		close(errorApi)
+	}()
+	// Recolectar resultados
+	for result := range respApi {
+		resApiList = append(resApiList, result)
+	}
+
+	// Manejar errores si hay alguno
+	if len(errorApi) > 0 {
+		for err := range errorApi {
+			log.Printf("Error en gorutina: %v", err)
+		}
+	}
+	total := len(resApiList)
+	response := ResponseAllPokemonsApi{
+		Total:       total,
+		ResponseApi: &resApiList,
 	}
 	return &response, nil
 }
 
-func getPokemonsAndAbility(url string, wg *sync.WaitGroup) (ResponseApi, error) {
-	defer wg.Done()
+func getPokemonsAndAbility(url string) (ResponseApi, error) {
+
 	response := ResponseApi{}
 	resp, err := http.Get(url)
 	if err != nil {
