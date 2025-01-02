@@ -106,6 +106,7 @@ func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
 			}(pokemon.Results[i].URL)
 		}
 	}
+
 	go func() {
 		wg.Wait()
 		close(respApi)
