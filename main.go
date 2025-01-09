@@ -11,7 +11,7 @@ import (
 
 func main() {
 
-	fmt.Println("Servidor escuchando en http://localhost:8080")
+	log.Println("Aplicación iniciada en http://localhost:8080")
 	http.HandleFunc("/all/", handlerAllPokemon)
 	http.HandleFunc("/pokemon/", handlerPokemon)
 
@@ -36,13 +36,14 @@ func handlerPokemon(w http.ResponseWriter, r *http.Request) {
 
 	response, err := getPokemonAndAbility(id)
 	if err != nil {
-		log.Fatalf("Erroooor")
+		log.Fatalf("Error al traer pokemon y habilidad : %v", err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
 func handlerAllPokemon(w http.ResponseWriter, r *http.Request) {
+	log.Println("handlerAllPokemon")
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
@@ -54,12 +55,13 @@ func handlerAllPokemon(w http.ResponseWriter, r *http.Request) {
 
 	response, err := getAllPokemons(id)
 	if err != nil {
-		log.Fatalf("Erroooor")
+		log.Fatalf("Error al traer pokemones y habilidades : %v", err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 func getAllPokemons(quantity string) (*ResponseAllPokemonsApi, error) {
+	log.Println("getAllPokemons")
 	const defaultLimit = "1100"
 
 	var limit string
